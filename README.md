@@ -1,4 +1,4 @@
-Activity 06 - Logistic Regression 
+Activity 06 -  Logistic Regression 
 ================
 
 This activity is intended to be completed over three 75-minute class

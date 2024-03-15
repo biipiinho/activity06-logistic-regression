@@ -52,6 +52,16 @@ Now...
   - `select` only the variables listed above to want to make viewing/managing the data (and the `augment` output later) easier.
 - Give your R code chunk a meaningful name, then run your code chunk or knit your document.
 
+
+```{r setup}
+library(tidyverse)
+library(tidymodels)
+
+nonvoters <- read_csv("data/nonvoters.csv")
+
+nonvoters <- nonvoters %>% select(ppage, educ,  race , gender , income_cat, Q30, voter_category)
+```
+
 After doing this, answer the following questions:
 
 1. Why do you think the authors chose to only include data from people who were eligible to vote for at least four election cycles?
@@ -60,7 +70,27 @@ After doing this, answer the following questions:
 2. In the FiveThirtyEight article, the authors include visualizations of the relationship between the [voter category and demographic variables](https://projects.fivethirtyeight.com/non-voters-poll-2020-election/images/NONVOTERS-1026-1.png?v=411f25ea).
   Select two of these demographic variables.
   Then, for each variable, create and interpret a plot to describe its relationship with `voter_category`.
+  
+```{r}
+summary_df <- nonvoters %>%
+  group_by(income_cat, voter_category) %>%
+  summarise(count = n())
 
+ggplot(summary_df, aes(x = count, y = income_cat, fill = voter_category)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_brewer(palette = "Set2") +  # Applying a RColorBrewer palette
+  theme_minimal() +
+  labs(title = "Count of Voter Categories by Age Group",
+       x = "Count",
+       y = "Income Category") +
+  theme_minimal() +
+  theme(legend.position = "top", legend.title = element_blank())
+```
+
+```{r demographic viz}
+ggplot(nonvoters, aes(x = race, y=ppage, fill = voter_category)) +
+  geom_bar(stat = "identity", position = "stack")
+```
 
 
 We need to do some data preparation before we fit our multinomial logistic regression model.
@@ -73,6 +103,35 @@ We need to do some data preparation before we fit our multinomial logistic regre
 - Then, run your code chunk or knit your document.
   Check that your changes are correct by creating a stacked bar graph using your new `Q30` variable as the $y$-axis and the `voter_category` represented with different colors.
   **Challenge**: Can you use the same color palette (*hint*: this is a handy tool, https://pickcoloronline.com/) that $\texttt{FiveThirthyEight}$ used in their article?
+  
+  
+```{r convert party}
+nonvoters <- nonvoters %>% mutate(party = case_when(
+  Q30 == '1' ~ 'Republican',
+  Q30 == '2' ~ 'Democrat',
+  Q30 == '3' ~ 'Independent',
+    TRUE ~ 'Other'))
+```
+
+```{r relevel}
+nonvoters <- nonvoters %>%
+  mutate(voter_category = factor(voter_category, levels = c("rarely/never", "sporadic", "always")))
+
+#nonvoters <- nonvoters %>%  mutate(Race = relevel(Race, ref = "Hispanic"))
+nonvoters <- nonvoters %>%
+  mutate(voter_category = fct_rev(voter_category))
+```
+
+```{r stacked Q30}
+summary_df <- nonvoters %>%
+  group_by(race, voter_category) %>%
+  summarise(count = n()) %>% mutate(percent = count / sum(count) * 100)  # Calculate count percent
+
+ggplot(summary_df, aes(x = percent, y = race, fill = voter_category)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_brewer(palette = "Set2")
+```
+
 
 ## Fitting the model
 
@@ -139,7 +198,7 @@ This is using `{tidymodels}`.
 - In the code chunk below, replace "verbatim" with "r", 
 - Provide the code chunk a meaningful name/title, then run it.
   
-```{verbatim}
+```{r modelr}
 # abbreviated recipe from previous activities
 multi_mod <- multinom_reg() %>% 
   set_engine("nnet") %>% 
@@ -147,6 +206,9 @@ multi_mod <- multinom_reg() %>%
 
 tidy(multi_mod) %>% 
   print(n = Inf) # This will display all rows of the tibble
+
+multi_mod <- repair_call(multi_mod, data = nonvoters)
+
 ```
 
 `{tidymodels}` is designed for cross-validation and so there needs to be some "trickery" when we build models using the entire dataset.
@@ -216,7 +278,7 @@ However, we will let R do these calculations.
 - In the code chunk below, replace "verbatim" with "r", 
 - Provide the code chunk a meaningful name/title, then run it.
   
-```{verbatim}
+```{r}
 voter_aug <- augment(multi_mod, new_data = nonvoters)
 
 voter_aug
@@ -231,7 +293,7 @@ This is still rather difficult to view so a [confusion matrix](https://en.wikipe
 - In the code chunk below, replace "verbatim" with "r", 
 - Provide the code chunk a meaningful name/title, then run it.
   
-```{verbatim}
+```{r}
 voter_conf_mat <- voter_aug %>% 
   count(voter_category, .pred_class, .drop = FALSE)
 
@@ -247,7 +309,7 @@ We can also visualize how well these predictions fit the original values.
 - In the code chunk below, replace "verbatim" with "r", 
 - Provide the code chunk a meaningful name/title, then run it.
   
-```{verbatim}
+```{r}
 voters %>% 
   ggplot(aes(x = voter_category)) +
   geom_bar() +
